@@ -11,14 +11,13 @@ using namespace std;
 struct vertex_data {
 	std::vector<double> feature;	
 	std::vector<double> sims;
-	size_t num;
 
 	void save(graphlab::oarchive& oarc) const {
-		oarc << num << feature << sims;
+		oarc << feature << sims;
 	}
 
 	void load(graphlab::iarchive& iarc) {
-		iarc >> num >> feature >> sims;
+		iarc >> feature >> sims;
 	}
 };
 
@@ -41,67 +40,90 @@ bool vertex_loader(graph_type& graph, const std::string& fname, const std::strin
 
 	if (line.empty())
 		return true;
-	namespace qi = boost::spirit::qi;
-	namespace ascii = boost::spirit::ascii;
-	namespace phoenix = boost::phoenix;
 
 	vertex_data vtx;
 
+	using boost::lexical_cast;
+	using boost::bad_lexical_cast;
+
 	graphlab::vertex_id_type vid;
 
-	const bool success = qi::phrase_parse
-		(line.begin(), line.end(),
-		 //  Begin grammar
-		 (
-		  (qi::double_[phoenix::push_back(phoenix::ref(vtx.feature), qi::_1)] % -qi::char_(",") )
-		 )
-		 ,
-		 //  End grammar
-		 ascii::space);
+	std::string str = line;
+	std::string delimiter = ",";
+	size_t pos = 0;
 
-	if (!success) return false;
+	int cnt = 0;
+	while((pos = str.find(delimiter)) != std::string::npos) {
+		try {
+			if (cnt == 0)
+				vid = lexical_cast<graphlab::vertex_id_type>(str.substr(0, pos));
+			
+			else
+				vtx.feature.push_back(lexical_cast<double>(str.substr(0, pos)));
+			cnt++;
+		} catch(bad_lexical_cast &) {
+			return false;
+		}
+		str.erase(0, pos+delimiter.length());
+	}	
 
-	vtx.num = size_t(vtx.feature.back());
+	delimiter = "\t";
+	pos = 0;	
 
-	vtx.feature.pop_back();
-
-	vid = NEXT_VID.inc_ret_last(graph.numprocs());	
 	graph.add_vertex(vid, vtx);		
-	graph.add_edge(vid, vtx.num, graphlab::empty());
 
+	while((pos = str.find(delimiter)) != std::string::npos) {
+		try {
+			graph.add_edge(vid, lexical_cast<int>(str.substr(0,pos)), graphlab::empty());							
+		} catch(bad_lexical_cast &) {
+			return false;
+		}
+		str.erase(0, pos + delimiter.length());
+	}	
+
+	try {
+		graph.add_edge(vid, lexical_cast<int>(str), graphlab::empty());
+	} catch (bad_lexical_cast &) {
+		return false;
+	}
+	
 	return true;
 }
 
-struct set_union_gather : public graphlab::IS_POD_TYPE {
-
-	std::vector<double> sims;
-	std::vector<double> source_feature;
-	std::vector<double> target_feature;
-	graphlab::vertex_id_type source;
-	graphlab::vertex_id_type target;
+struct set_union_gather : public graphlab::IS_POD_TYPE {	
 
 	set_union_gather() {}
-	explicit set_union_gather(const std::vector<double> &s_feature, const std::vector<double> &t_feature, graphlab::vertex_id_type s, graphlab::vertex_id_type t) {
-		source_feature = s_feature;
-		target_feature = t_feature; 
-		source = s;
-		target = t;
-	}
 
-	set_union_gather& operator+=(const set_union_gather& other) {	
+	explicit set_union_gather(const graph_type::vertex_type& a_source, const graph_type::edge_type& a_target){	
 	
-		double sim = eucliean(source_feature, other.target_feature);		
-		sims.push_back(sim);	
+		double sim = eucliean(a_source.data().feature, a_target.source().data().feature);
+		graph_type::vertex_type source = a_source;
+		source.data().sims.push_back(sim);
+	}
+	
+	set_union_gather& operator+=(const set_union_gather& other) {		
 		return *this;
 	}	
 };
 
 struct vertex_writer {
+
 	std::string save_vertex(graph_type::vertex_type v) {
 		std::stringstream strm;
+
+		bool p = false;
 		for(size_t i = 0; i < v.data().sims.size();i++) {
-			strm << v.data().sims[i] << "\n";
+			if (i == v.id() && !p) {
+				strm << 0.0 << "\t";
+				i--;
+				p = true;
+			}
+			else
+				strm << v.data().sims[i] << "\t";
 		}
+		if (p == false)
+			strm << 0.0 << "\t";
+		strm << "\n";
 
 		strm.flush();
 
@@ -118,24 +140,20 @@ class Similarity_Calc : public graphlab::ivertex_program<graph_type, set_union_g
 
 		edge_dir_type gather_edges(icontext_type& context,
 				const vertex_type& vertex) const {
-			return graphlab::ALL_EDGES;
+			return graphlab::IN_EDGES;
 		}
 
-
-		gather_type gather(icontext_type& context, const vertex_type& vertex, edge_type& edge) const {	
-			return set_union_gather(vertex.data().feature, edge.target().data().feature, vertex.id(), edge.target().id());
+		gather_type gather(icontext_type& context, const vertex_type& vertex, edge_type& edge) const {		
+			return set_union_gather(vertex, edge);
 		}
 
 		void apply(icontext_type& context, vertex_type& vertex,
-				const gather_type& total) {
-			//vertex.sims = total.sims;
-			for (int i = 0; i < total.sims.size(); i++)
-				vertex.data().sims.push_back(total.sims[i]);
+				const gather_type& total) {	
 		}
 
 		edge_dir_type scatter_edges(icontext_type& context,
 				const vertex_type& vertex) const {
-			return graphlab::OUT_EDGES;
+			//return graphlab::OUT_EDGES;
 		}
 
 		void scatter(icontext_type& context, const vertex_type& vertex,
