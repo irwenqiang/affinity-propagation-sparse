@@ -8,9 +8,23 @@
 #include <graphlab.hpp>
 using namespace std;
 
+struct similarity {
+	graphlab::vertex_id_type source;
+	graphlab::vertex_id_type target;
+	double sim;
+
+	void save(graphlab::oarchive& oarc) const {
+		oarc << source << target << sim;
+	}
+
+	void load(graphlab::iarchive& iarc) {
+		iarc >> source >> target >> sim;
+	}
+};
+
 struct vertex_data {
 	std::vector<double> feature;	
-	std::vector<double> sims;
+	std::vector<similarity> sims;
 
 	void save(graphlab::oarchive& oarc) const {
 		oarc << feature << sims;
@@ -98,7 +112,11 @@ struct set_union_gather : public graphlab::IS_POD_TYPE {
 	
 		double sim = eucliean(a_source.data().feature, a_target.source().data().feature);
 		graph_type::vertex_type source = a_source;
-		source.data().sims.push_back(sim);
+		similarity sims;
+		sims.source = a_source.id();
+		sims.target = a_target.source().id();
+		sims.sim = sim;
+		source.data().sims.push_back(sims);
 	}
 	
 	set_union_gather& operator+=(const set_union_gather& other) {		
@@ -110,21 +128,10 @@ struct vertex_writer {
 
 	std::string save_vertex(graph_type::vertex_type v) {
 		std::stringstream strm;
-
-		bool p = false;
+	
 		for(size_t i = 0; i < v.data().sims.size();i++) {
-			if (i == v.id() && !p) {
-				strm << 0.0 << "\t";
-				i--;
-				p = true;
-			}
-			else
-				strm << v.data().sims[i] << "\t";
+			strm << v.data().sims[i].source << "\t" << v.data().sims[i].target << "\t" << v.data().sims[i].sim << "\n";
 		}
-		if (p == false)
-			strm << 0.0 << "\t";
-		strm << "\n";
-
 		strm.flush();
 
 		return strm.str();

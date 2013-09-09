@@ -1,5 +1,6 @@
 #include <string>
 #include <vector>
+#include <set>
 #include <iostream>
 #include <limits>
 #include <algorithm>
@@ -18,6 +19,8 @@ using namespace std;
 double damping = 0.5;
 int MAX_ITER = 100;
 string INPUT_FILE = "ap_graph.txt";
+
+std::set<int> examplars;
 
 /*
  * the incoming edge's vertex_id and the max(a(i, k) + s(i, k))
@@ -88,45 +91,26 @@ bool graph_loader(graph_type& graph, const std::string& fname, const std::string
 
 	std::stringstream strm(line);
 
-	graphlab::vertex_id_type vid;
+	graphlab::vertex_id_type source;
+	graphlab::vertex_id_type target;
+	
+	strm >> source;
 
-	// first entry in the line is a vertex ID
-	strm >> vid;
+	strm >> target;	
 
-	double ivalue = 0.0;
-
-	strm >> ivalue;
-
-	graph.add_vertex(vid, vertex_data(vid, ivalue, 0.0, 0.0));
+	graph.add_vertex(source, vertex_data(source, 0, 0.0, 0.0));
+	graph.add_vertex(target, vertex_data(target, 0, 0.0, 0.0));
 
 	double vs;
 	double vr = 0.0;
 	double va = 0.0;
 
-	int neighbor_num = 0;
+	strm >> vs;
 
-	strm >> neighbor_num;
-
-	// while there are elements in the line, continue to read until we fail	
-	while(neighbor_num){
-
-		neighbor_num--;
-
-		if (strm.fail()) {
-			cout << "strm read fail..." << endl;
-			break;
-		}
-
-		graphlab::vertex_id_type other_vid;
-		strm >> other_vid;
-		strm >> vs;
-
-		graph.add_edge(other_vid, vid, edge_data(vs, vr, va));
-
-	}
+	//graph.add_edge(source, target, edge_data(vs, vr, va));
+	graph.add_edge(source, target, edge_data(vs, vr, va));
 
 	return true;
-
 };
 
 /*
@@ -218,7 +202,7 @@ class affinity_propagation :
 			 * 	2. the sec_max_value:	 max(a(i, k) + s(i, k))    
 			 */
 			gather_type gather(icontext_type& context, const vertex_type& vertex, edge_type& edge) const {
-
+				
 				double fs = edge.data().s;
 				double fr = edge.data().r;
 				double fa = edge.data().a;
@@ -261,6 +245,7 @@ class affinity_propagation :
 
 			edge_dir_type scatter_edges(icontext_type& context,
 					const vertex_type& vertex) const {
+
 				if ((vertex.data().count - 1) % 2 == 0)
 					return graphlab::IN_EDGES;
 
@@ -268,8 +253,8 @@ class affinity_propagation :
 			}
 
 			void scatter(icontext_type& context, const vertex_type& vertex,
-					edge_type& edge) const {
-
+					edge_type& edge) const {	
+	
 				if ((vertex.data().count - 1) % 2 == 0){
 					double tmp = vertex.data().a + vertex.data().s;
 					double imax = vertex.data().max_value.value;
@@ -313,10 +298,9 @@ class affinity_propagation :
 						context.signal(edge.target());
 
 				}else {
-					if (vertex.data().a + vertex.data().r > 0)
-
-						cout << "examplar: " << vertex.data().vertex_id << endl;
-
+					if (vertex.data().a + vertex.data().r > 0) {	
+						examplars.insert(vertex.data().vertex_id);
+					}	
 				}
 
 			}
@@ -358,7 +342,6 @@ struct affinity_propagation_writer {
 			<< endl;
 
 		return strm.str();
-
 	}
 };
 
@@ -401,6 +384,12 @@ int main(int argc, char** argv) {
 	graphlab::timer timer;
 	engine.start();
 
+
+	cout << "output: " << endl;
+	std::set<int>::iterator iter;
+	for (iter = examplars.begin();iter != examplars.end();iter++)
+		cout << *iter << endl;
+
 	const double runtime = timer.current_time();
 	dc.cout() 
 		<< "-----------------------------------" << endl
@@ -420,7 +409,6 @@ int main(int argc, char** argv) {
 	}
 
 	graphlab::mpi_tools::finalize();
-
 	return EXIT_SUCCESS;
 }
 
