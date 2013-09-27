@@ -313,36 +313,36 @@ class affinity_propagation :
  */
 
 struct affinity_propagation_writer {
-
-	std::string save_vertex(const graph_type::vertex_type& v) {
+	std::string save_vertex(graph_type::vertex_type v) {	
 		std::stringstream strm;
-		strm << v.data().vertex_id 
-			<< "\t"
-			<< v.data().s
-			<< "\t"
-			<< v.data().r
-			<< "\t"
-			<< v.data().a
-			<< endl;
 
-		return strm.str();
+		if (v.data().r + v.data().a > 0) {
+			strm << v.data().vertex_id 
+				<< "\t"
+				<< v.data().s
+				<< "\t"
+				<< v.data().r
+				<< "\t"
+				<< v.data().a
+				<< endl;
+		}
+
+		return strm.str();	
 	}
 
-	std::string save_edge(graph_type::edge_type e) {
+	
+	std::string save_edge(graph_type::edge_type e) { 
 		std::stringstream strm;
 		strm << e.source().data().vertex_id
-			<< "\t"
-			<< e.target().data().vertex_id
-			<< "\t"
-			<< e.data().s 
-			<< "\t"
-			<< e.data().r
-			<< "\t"
-			<< e.data().a
-			<< endl;
-
-		return strm.str();
-	}
+		     << "\t"
+		     << e.source().data().s
+		     << "\t"
+		     << e.source().data().r
+		     << "\t"
+		     << e.source().data().a
+		     << endl;
+		return strm.str();		
+	}	
 };
 
 int main(int argc, char** argv) {
@@ -382,13 +382,7 @@ int main(int argc, char** argv) {
 	engine_type engine(dc, graph, exec_type, clopts);
 	engine.signal_all();
 	graphlab::timer timer;
-	engine.start();
-
-
-	cout << "output: " << endl;
-	std::set<int>::iterator iter;
-	for (iter = examplars.begin();iter != examplars.end();iter++)
-		cout << *iter << endl;
+	engine.start();	
 
 	const double runtime = timer.current_time();
 	dc.cout() 
@@ -404,11 +398,15 @@ int main(int argc, char** argv) {
 	if (saveprefix != ""){
 		graph.save(saveprefix, affinity_propagation_writer(),
 				false,	// do not gzip
-				false,	// save vertices
-				true);	// do not save edges
+				true,	// save vertices
+				false);	// save edges
 	}
 
 	graphlab::mpi_tools::finalize();
+
+	cout << "output: " << endl;
+	std::set<int>::iterator iter;
+	for (iter = examplars.begin();iter != examplars.end();iter++)
+		cout << *iter << endl;
 	return EXIT_SUCCESS;
 }
-
