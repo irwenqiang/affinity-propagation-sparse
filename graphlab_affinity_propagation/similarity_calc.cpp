@@ -46,6 +46,44 @@ double eucliean(const std::vector<double>& a, const std::vector<double>& b) {
 	return -sqrt(sum);
 }
 
+double manhattan(const std::vector<double>& a, const std::vector<double>& b) {
+	ASSERT_EQ(a.size(), b.size());
+	double sum = 0.0;
+
+	for(size_t i = 0; i < a.size(); i++) {
+		sum += fabs(a[i] - b[i]);
+	}
+
+	return -sum;
+}
+
+double chebyshev(const std::vector<double>& a, const std::vector<double>& b) {
+	ASSERT_EQ(a.size(), b.size());
+	double max = -1.0;
+
+	for(size_t i = 0; i < a.size(); i++) {
+		if (fabs(a[i] - b[i]) > max)
+			max = fabs(a[i] - b[i]);
+	}
+
+	return -max;
+}
+
+double cosine(const std::vector<double>& a,  const std::vector<double>& b) {
+	ASSERT_EQ(a.size(), b.size());
+	double x_y = 0.0;
+	double x_2 = 0.0;
+	double y_2 = 0.0;
+
+	for(size_t i = 0; i < a.size(); i++) {
+		x_y += a[i] * b[i];
+		x_2 = a[i] * a[i];
+		y_2 = b[i] * b[i];
+	}
+
+	return -x_y /(sqrt(x_2) * sqrt(y_2));
+}
+
 typedef graphlab::distributed_graph<vertex_data, graphlab::empty> graph_type;
 
 graphlab::atomic<graphlab::vertex_id_type> NEXT_VID;
@@ -160,7 +198,7 @@ class Similarity_Calc : public graphlab::ivertex_program<graph_type, set_union_g
 
 		edge_dir_type scatter_edges(icontext_type& context,
 				const vertex_type& vertex) const {
-			//return graphlab::OUT_EDGES;
+			//return graphlab::OUT_EDGES;	
 		}
 
 		void scatter(icontext_type& context, const vertex_type& vertex,
