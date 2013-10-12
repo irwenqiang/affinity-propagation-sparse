@@ -19,6 +19,7 @@ using namespace std;
 double damping = 0.5;
 int MAX_ITER = 100;
 string INPUT_FILE = "ap_graph.txt";
+double preference = 0.0;
 
 std::set<int> examplars;
 
@@ -98,8 +99,8 @@ bool graph_loader(graph_type& graph, const std::string& fname, const std::string
 
 	strm >> target;	
 
-	graph.add_vertex(source, vertex_data(source, 0, 0.0, 0.0));
-	graph.add_vertex(target, vertex_data(target, 0, 0.0, 0.0));
+	graph.add_vertex(source, vertex_data(source, preference, 0.0, 0.0));
+	graph.add_vertex(target, vertex_data(target, preference, 0.0, 0.0));
 
 	double vs;
 	double vr = 0.0;
@@ -357,13 +358,15 @@ int main(int argc, char** argv) {
 	clopts.attach_option("engine", exec_type, "The type of engine to use {async, sync}.");
 
 	std::string saveprefix;
-	clopts.attach_option("saveprefix", saveprefix, "If set, will save the examplar to a sequence of files with prefix saveprefix");
+	clopts.attach_option("output", saveprefix, "If set, will save the examplar to a sequence of files with prefix saveprefix");
 
 	std::string tolerance;
 	clopts.attach_option("tolerance", tolerance, "the tolerance to terminate the computation");
 
-	clopts.attach_option("inputfile", INPUT_FILE, "the input file of the graph");
+	clopts.attach_option("data", INPUT_FILE, "the input file of the graph");
 	clopts.attach_option("max_iter", MAX_ITER, "max iterations");
+	clopts.attach_option("preference", preference, "the preference");
+	clopts.attach_option("damping", damping, "the damping");
 
 	if(!clopts.parse(argc, argv)) {
 
@@ -393,8 +396,7 @@ int main(int argc, char** argv) {
 		<< endl
 		<< "Update Rate (updates/seconds): "
 		<< engine.num_updates() / runtime << endl;
-
-	saveprefix = "output";
+	
 	if (saveprefix != ""){
 		graph.save(saveprefix, affinity_propagation_writer(),
 				false,	// do not gzip

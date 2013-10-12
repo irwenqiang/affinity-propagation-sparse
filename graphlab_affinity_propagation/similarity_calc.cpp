@@ -2,11 +2,14 @@
 #include <boost/spirit/include/qi.hpp>
 #include <boost/spirit/include/phoenix_core.hpp>
 #include <boost/spirit/include/phoenix_stl.hpp>
+#include <fstream>  
 #include <limits>
 #include <vector>
 #include <algorithm>
 #include <graphlab.hpp>
 using namespace std;
+
+size_t NUM_SAMPLES = 0;
 
 struct similarity {
 	graphlab::vertex_id_type source;
@@ -99,6 +102,39 @@ bool vertex_loader(graph_type& graph, const std::string& fname, const std::strin
 	using boost::bad_lexical_cast;
 
 	graphlab::vertex_id_type vid;
+		
+	std::stringstream strm(line);
+
+	strm >> vid;
+
+	double feature = 0.0;
+
+	while(strm >> feature) {
+		vtx.feature.push_back(feature);	
+	} 	
+
+	graph.add_vertex(vid, vtx);		
+
+	for (int i = 0; i < NUM_SAMPLES; i++) {
+		if (vid == i)
+			continue;
+		else
+			graph.add_edge(vid, i, graphlab::empty());
+	}
+	
+	return true;
+}
+bool vertex_loader_sparse(graph_type& graph, const std::string& fname, const std::string& line) {
+
+	if (line.empty())
+		return true;
+
+	vertex_data vtx;
+
+	using boost::lexical_cast;
+	using boost::bad_lexical_cast;
+
+	graphlab::vertex_id_type vid;
 
 	std::string str = line;
 	std::string delimiter = ",";
@@ -109,7 +145,7 @@ bool vertex_loader(graph_type& graph, const std::string& fname, const std::strin
 		try {
 			if (cnt == 0)
 				vid = lexical_cast<graphlab::vertex_id_type>(str.substr(0, pos));
-			
+
 			else
 				vtx.feature.push_back(lexical_cast<double>(str.substr(0, pos)));
 			cnt++;
@@ -138,16 +174,15 @@ bool vertex_loader(graph_type& graph, const std::string& fname, const std::strin
 	} catch (bad_lexical_cast &) {
 		return false;
 	}
-	
+
 	return true;
 }
-
 struct set_union_gather : public graphlab::IS_POD_TYPE {	
 
 	set_union_gather() {}
 
 	explicit set_union_gather(const graph_type::vertex_type& a_source, const graph_type::edge_type& a_target){	
-	
+
 		double sim = eucliean(a_source.data().feature, a_target.source().data().feature);
 		graph_type::vertex_type source = a_source;
 		similarity sims;
@@ -156,7 +191,7 @@ struct set_union_gather : public graphlab::IS_POD_TYPE {
 		sims.sim = sim;
 		source.data().sims.push_back(sims);
 	}
-	
+
 	set_union_gather& operator+=(const set_union_gather& other) {		
 		return *this;
 	}	
@@ -192,8 +227,7 @@ class Similarity_Calc : public graphlab::ivertex_program<graph_type, set_union_g
 			return set_union_gather(vertex, edge);
 		}
 
-		void apply(icontext_type& context, vertex_type& vertex,
-				const gather_type& total) {	
+		void apply(icontext_type& context, vertex_type& vertex,const gather_type& total) {	
 		}
 
 		edge_dir_type scatter_edges(icontext_type& context,
@@ -222,13 +256,16 @@ int main(int argc, char** argv) {
 	std::string datafile;
 	std::string outcluster_file;
 	std::string outdata_file;
+	std::string is_sparse;
 	clopts.attach_option("data", datafile,
 			"Input file. Each line hold a white-space or comma separated numeric vector");	
+	clopts.attach_option("num-samples", NUM_SAMPLES, "The number of samples."); 
+	clopts.attach_option("is-sparse", is_sparse, "whether the data is sparse. y or n");
 	clopts.attach_option("output-clusters", outcluster_file,
 			"If set, will write a file containing cluster centers "
 			"to this filename. This must be on the local filesystem "
 			"and must be accessible to the root node.");
-	clopts.attach_option("output-data", outdata_file,
+	clopts.attach_option("output", outdata_file,
 			"If set, will output a copy of the input data with an additional "
 			"last column denoting the assigned cluster centers. The output "
 			"will be written to a sequence of filenames where each file is "
@@ -242,6 +279,18 @@ int main(int argc, char** argv) {
 		return EXIT_FAILURE;
 	}
 
+	if (NUM_SAMPLES == 0) {
+		std::cout << "--num-samples is not optional\n";
+		clopts.print_description();
+		return EXIT_FAILURE;
+	}
+
+	if (is_sparse == "") {
+		std::cout <<"--is-sparse is not optional\n";
+		clopts.print_description();
+		return EXIT_FAILURE;
+	}
+
 	graphlab::mpi_tools::init(argc, argv);
 	graphlab::distributed_control dc;
 
@@ -249,7 +298,11 @@ int main(int argc, char** argv) {
 	// load graph
 	graph_type graph(dc, clopts);
 	NEXT_VID = dc.procid();
-	graph.load(datafile, vertex_loader);
+	
+	if(is_sparse == "n")
+		graph.load(datafile, vertex_loader);
+	else if (is_sparse == "y")
+		graph.load(datafile, vertex_loader_sparse);
 
 	graph.finalize();
 
